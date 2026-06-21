@@ -1,0 +1,10 @@
+{
+  "name": "unoooooooo-web-tests",
+  "private": true,
+  "scripts": {
+    "test:e2e": "playwright test webapp.e2e.spec.js --workers=1"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.61.0"
+  }
+}

@@ -1,5 +1,5 @@
 # Local/private assets
-Client/Additional_Assets/Us.jpg
+assets/ui/Us.jpg
 
 # Python caches and virtual environments
 __pycache__/
@@ -8,14 +8,18 @@ __pycache__/
 venv/
 .env
 .env.*
+node_modules/
+test-results/
+playwright-report/
 
-# PyInstaller and other generated build output
+# Generated build output
 build/
 dist/
-*.spec.bak
 
 # Editor and OS noise
 .vscode/
 .idea/
 .DS_Store
 Thumbs.db
+web-home.png
+web-game-*.png

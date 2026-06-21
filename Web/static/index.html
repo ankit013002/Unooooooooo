@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#111827" />
+    <meta name="description" content="A private, browser-based UNO game with Llama players." />
+    <title>Unoooooooo</title>
+    <link rel="icon" href="/assets/ui/UNO_Icon.ico" />
+    <link rel="stylesheet" href="/static/styles.css" />
+    <script src="/static/app.js" defer></script>
+  </head>
+  <body>
+    <div class="ambient ambient-one"></div>
+    <div class="ambient ambient-two"></div>
+
+    <main class="app-shell">
+      <section id="home-view" class="view home-view">
+        <header class="hero">
+          <div class="eyebrow">Private game night</div>
+          <h1><span>UNO</span>OOOOOOOO</h1>
+          <p>Create a room, share four letters, and let the llamas fill the empty chairs.</p>
+        </header>
+
+        <div class="home-grid">
+          <form id="create-form" class="glass-panel action-panel">
+            <div class="panel-icon red">＋</div>
+            <div>
+              <p class="kicker">Start fresh</p>
+              <h2>Create a room</h2>
+            </div>
+
+            <label>
+              Your name
+              <input id="create-name" name="name" maxlength="20" autocomplete="nickname" placeholder="Ankit" required />
+            </label>
+
+            <div class="seat-row">
+              <label>
+                Humans
+                <select id="human-seats" name="humanSeats">
+                  <option value="1">1</option>
+                  <option value="2" selected>2</option>
+                  <option value="3">3</option>
+                  <option value="4">4</option>
+                </select>
+              </label>
+              <label>
+                Llamas
+                <select id="bot-seats" name="botSeats">
+                  <option value="0">0</option>
+                  <option value="1">1</option>
+                  <option value="2" selected>2</option>
+                  <option value="3">3</option>
+                </select>
+              </label>
+            </div>
+
+            <button class="primary-button" type="submit">
+              Create room <span aria-hidden="true">→</span>
+            </button>
+          </form>
+
+          <form id="join-form" class="glass-panel action-panel">
+            <div class="panel-icon blue">↗</div>
+            <div>
+              <p class="kicker">Someone invited you</p>
+              <h2>Join a room</h2>
+            </div>
+
+            <label>
+              Your name
+              <input id="join-name" name="name" maxlength="20" autocomplete="nickname" placeholder="Kisu" required />
+            </label>
+
+            <label>
+              Room code
+              <input id="room-code" class="room-input" name="code" maxlength="4" autocomplete="off" placeholder="ABCD" required />
+            </label>
+
+            <button class="secondary-button" type="submit">
+              Join game <span aria-hidden="true">→</span>
+            </button>
+          </form>
+        </div>
+
+        <footer class="home-footer">
+          <span><i class="status-dot"></i> Runs privately on your laptop</span>
+          <span>No accounts. No downloads. Mild llama treachery.</span>
+        </footer>
+      </section>
+
+      <section id="lobby-view" class="view lobby-view hidden">
+        <nav class="topbar">
+          <button class="wordmark button-reset" data-leave>UNO<span>OOOOOOOO</span></button>
+          <div class="connection-pill"><i class="status-dot"></i><span id="connection-label">Connected</span></div>
+        </nav>
+
+        <div class="lobby-content">
+          <div class="lobby-copy">
+            <p class="kicker">Your private table</p>
+            <h1>Waiting for the crew</h1>
+            <p>Share this code with the other human. The bots are already pretending not to look at your cards.</p>
+
+            <button id="copy-room" class="room-code-card" type="button" aria-label="Copy room link">
+              <span>Room code</span>
+              <strong id="lobby-code">----</strong>
+              <small>Tap to copy invite link</small>
+            </button>
+          </div>
+
+          <div class="glass-panel players-panel">
+            <div class="panel-heading">
+              <div>
+                <p class="kicker">Seats</p>
+                <h2>Players</h2>
+              </div>
+              <span id="seat-count" class="count-chip">0 / 4</span>
+            </div>
+            <div id="lobby-players" class="player-list"></div>
+            <button id="ready-button" class="primary-button ready-button" type="button">I’m ready</button>
+            <p id="ready-hint" class="ready-hint">The game begins when every human is ready.</p>
+          </div>
+        </div>
+      </section>
+
+      <section id="game-view" class="view game-view hidden">
+        <nav class="game-topbar">
+          <button class="wordmark button-reset" data-leave>UNO<span>OOOOOOOO</span></button>
+          <div id="turn-banner" class="turn-banner">Waiting…</div>
+          <button id="game-room-code" class="mini-room-code" type="button">ROOM ----</button>
+        </nav>
+
+        <div id="paused-banner" class="paused-banner hidden">Game paused while a player reconnects…</div>
+        <div id="opponents" class="opponents"></div>
+
+        <div class="table-center">
+          <button id="draw-pile" class="card-stack" type="button" aria-label="Draw a card">
+            <img src="/assets/cards/Uno%20Back.png" alt="Draw pile" />
+            <span id="deck-count">0 cards</span>
+          </button>
+          <div class="discard-wrap">
+            <div class="pile-label">Discard</div>
+            <img id="discard-card" class="discard-card" src="/assets/cards/Uno%20Back.png" alt="Top discard" />
+          </div>
+        </div>
+
+        <div class="hand-zone">
+          <div class="hand-toolbar">
+            <div>
+              <span class="kicker">Your hand</span>
+              <strong id="hand-count">0 cards</strong>
+            </div>
+            <button id="uno-button" class="uno-button hidden" type="button">UNO!</button>
+          </div>
+          <div id="player-hand" class="player-hand" aria-label="Your cards"></div>
+        </div>
+      </section>
+    </main>
+
+    <div id="color-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="color-title">
+      <div class="color-dialog">
+        <p class="kicker">Wild card</p>
+        <h2 id="color-title">Choose the next color</h2>
+        <div class="color-grid">
+          <button class="color-choice red-choice" data-color="Red">Red</button>
+          <button class="color-choice yellow-choice" data-color="Yellow">Yellow</button>
+          <button class="color-choice green-choice" data-color="Green">Green</button>
+          <button class="color-choice blue-choice" data-color="Blue">Blue</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="winner-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="winner-title">
+      <div class="winner-dialog">
+        <div class="winner-burst">★</div>
+        <p class="kicker">That’s the round</p>
+        <h2 id="winner-title">Someone wins!</h2>
+        <p id="winner-copy">A truly suspicious display of card skill.</p>
+        <div class="winner-actions">
+          <button id="rematch-button" class="primary-button" type="button">Ready for a rematch</button>
+          <button class="text-button" type="button" data-leave>Leave room</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
+  </body>
+</html>

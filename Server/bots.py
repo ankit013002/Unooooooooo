@@ -10,10 +10,7 @@ from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
-try:
-    from .game import COLORS, most_common_color
-except ImportError:  # Support `python Server/Server.py`.
-    from game import COLORS, most_common_color
+from .game import COLORS, most_common_color
 
 
 LOGGER = logging.getLogger(__name__)
