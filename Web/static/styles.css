@@ -228,6 +228,9 @@ input:focus, select:focus { border-color: #60a5fa; box-shadow: 0 0 0 3px rgba(59
 
 .game-view {
   position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
   overflow: hidden;
   background:
     linear-gradient(rgba(5, 11, 19, .76), rgba(5, 11, 19, .9)),
@@ -238,31 +241,70 @@ input:focus, select:focus { border-color: #60a5fa; box-shadow: 0 0 0 3px rgba(59
 .turn-banner.yours { color: #fde047; }
 .paused-banner { position: absolute; z-index: 20; top: 76px; left: 50%; transform: translateX(-50%); border: 1px solid rgba(250,204,21,.3); border-radius: 99px; background: rgba(66,32,6,.9); color: #fde68a; padding: 9px 16px; font-size: .78rem; }
 
-.opponents {
+.table-layout {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex: 1;
+  padding: 10px 20px 0;
+  gap: 6px;
+  min-height: 0;
+}
+.seat-top {
   display: flex;
   justify-content: center;
-  gap: clamp(12px, 4vw, 56px);
-  min-height: 120px;
-  padding: 18px 20px 0;
+  align-items: flex-end;
+  gap: 14px;
+  width: 100%;
+  min-height: 96px;
 }
-.opponent {
-  position: relative;
-  display: grid;
-  grid-template-columns: auto 1fr;
+.seat-top:empty { min-height: 0; }
+.table-middle {
+  display: flex;
   align-items: center;
+  justify-content: center;
+  flex: 1;
+  gap: clamp(16px, 4vw, 64px);
+  width: 100%;
+  min-height: 0;
+}
+.seat-side {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
   gap: 10px;
-  min-width: 150px;
+  min-width: 148px;
+  max-width: 190px;
+}
+.seat-side:empty { min-width: 0; flex: 0; }
+.seat-player {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
   border: 1px solid rgba(255,255,255,.09);
   border-radius: 16px;
-  background: rgba(6, 12, 22, .7);
-  padding: 10px 13px;
+  background: rgba(6,12,22,.72);
+  padding: 10px 12px;
   transition: border-color 180ms ease, transform 180ms ease;
 }
-.opponent.active { border-color: #fde047; transform: translateY(3px); box-shadow: 0 0 25px rgba(250,204,21,.11); }
-.opponent .avatar { width: 34px; height: 34px; border-radius: 10px; font-size: .8rem; }
-.opponent strong { display: block; max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .82rem; }
-.opponent small { color: var(--muted); font-size: .7rem; }
-.thinking-dot { position: absolute; top: 7px; right: 8px; color: #c4b5fd; font-size: .65rem; animation: pulse 1s infinite; }
+.seat-player.active { border-color: #fde047; transform: scale(1.04); box-shadow: 0 0 28px rgba(250,204,21,.14); }
+.seat-player-cards { display: flex; justify-content: center; min-height: 40px; align-items: flex-end; }
+.fan-card {
+  width: 24px;
+  border-radius: 3px;
+  margin-left: -9px;
+  filter: drop-shadow(0 3px 7px rgba(0,0,0,.55));
+  transform: rotate(calc((var(--i) - 3) * 7deg));
+  transform-origin: bottom center;
+}
+.fan-card:first-child { margin-left: 0; }
+.seat-player-info { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 8px; width: 100%; }
+.seat-player-info .avatar { width: 32px; height: 32px; border-radius: 9px; font-size: .78rem; }
+.seat-player-info strong { display: block; max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .8rem; }
+.seat-player-info small { color: var(--muted); font-size: .68rem; }
+.thinking-dot { position: absolute; top: 6px; right: 8px; color: #c4b5fd; font-size: .62rem; animation: pulse 1s infinite; }
 @keyframes pulse { 50% { opacity: .35; } }
 
 .table-center {
@@ -270,7 +312,6 @@ input:focus, select:focus { border-color: #60a5fa; box-shadow: 0 0 0 3px rgba(59
   align-items: center;
   justify-content: center;
   gap: clamp(28px, 6vw, 86px);
-  min-height: calc(100vh - 410px);
   padding: 14px 20px;
 }
 .card-stack, .discard-wrap { position: relative; width: clamp(94px, 10vw, 126px); }
@@ -293,10 +334,6 @@ input:focus, select:focus { border-color: #60a5fa; box-shadow: 0 0 0 3px rgba(59
 .discard-card { transform: rotate(3deg); }
 
 .hand-zone {
-  position: absolute;
-  right: 0;
-  bottom: 0;
-  left: 0;
   padding: 4px max(18px, 4vw) 18px;
   background: linear-gradient(transparent, rgba(4, 8, 15, .9) 30%);
 }
@@ -355,18 +392,18 @@ input:focus, select:focus { border-color: #60a5fa; box-shadow: 0 0 0 3px rgba(59
   .lobby-copy { text-align: center; }
   .lobby-copy > p { margin-inline: auto; }
   .room-code-card { margin-inline: auto; }
-  .opponents { justify-content: flex-start; overflow-x: auto; }
-  .opponent { min-width: 128px; }
+  .table-layout { padding: 6px 10px 0; }
+  .table-middle { gap: 10px; }
+  .seat-side { min-width: 110px; max-width: 130px; }
+  .fan-card { width: 18px; margin-left: -7px; }
   .turn-banner { position: absolute; top: 62px; left: 0; width: 100%; border-bottom: 1px solid var(--line); background: rgba(8,12,21,.8); padding: 8px; text-align: center; }
-  .table-center { min-height: calc(100vh - 395px); padding-top: 34px; }
   .hand-zone { padding-inline: 10px; }
   .player-hand { min-height: 145px; }
   .hand-card { flex-basis: 83px; margin-left: -17px; }
 }
 
 @media (max-height: 700px) and (min-width: 761px) {
-  .opponents { min-height: 90px; padding-top: 10px; }
-  .table-center { min-height: calc(100vh - 330px); }
+  .seat-top { min-height: 72px; }
   .player-hand { min-height: 135px; }
   .hand-card { flex-basis: 82px; }
 }

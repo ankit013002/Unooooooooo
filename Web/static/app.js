@@ -19,7 +19,9 @@ const ui = {
   readyButton: $("#ready-button"),
   readyHint: $("#ready-hint"),
   connectionLabel: $("#connection-label"),
-  opponents: $("#opponents"),
+  seatTop: $("#seat-top"),
+  seatLeft: $("#seat-left"),
+  seatRight: $("#seat-right"),
   turnBanner: $("#turn-banner"),
   pausedBanner: $("#paused-banner"),
   gameRoomCode: $("#game-room-code"),
@@ -235,15 +237,38 @@ function renderGame() {
   ui.pausedBanner.classList.toggle("hidden", !state.paused);
   ui.gameRoomCode.textContent = `ROOM ${state.roomCode}`;
 
-  ui.opponents.replaceChildren();
-  for (const player of state.players.filter((candidate) => candidate.id !== state.playerId)) {
-    const element = document.createElement("div");
-    element.className = `opponent ${player.id === state.currentTurn ? "active" : ""}`;
-    element.innerHTML = `
-      <div class="avatar ${player.bot ? "bot" : ""}">${player.bot ? "🦙" : initials(player.name)}</div>
-      <div><strong>${escapeHtml(player.name)}</strong><small>${player.cardCount} card${player.cardCount === 1 ? "" : "s"}${player.connected ? "" : " · offline"}</small></div>
+  ui.seatTop.replaceChildren();
+  ui.seatLeft.replaceChildren();
+  ui.seatRight.replaceChildren();
+
+  const opponents = state.players.filter((p) => p.id !== state.playerId);
+
+  function seatPlayerEl(player) {
+    const el = document.createElement("div");
+    el.className = `seat-player ${player.id === state.currentTurn ? "active" : ""}`;
+    const maxCards = Math.min(player.cardCount || 0, 7);
+    const fanCards = Array.from({ length: maxCards }, (_, i) =>
+      `<img class="fan-card" src="${cardUrl(null)}" alt="" style="--i:${i}">`
+    ).join("");
+    el.innerHTML = `
+      <div class="seat-player-cards">${fanCards}</div>
+      <div class="seat-player-info">
+        <div class="avatar ${player.bot ? "bot" : ""}">${player.bot ? "🦙" : initials(player.name)}</div>
+        <div><strong>${escapeHtml(player.name)}</strong><small>${player.cardCount} card${player.cardCount === 1 ? "" : "s"}${player.connected ? "" : " · offline"}</small></div>
+      </div>
       ${state.botThinking === player.id ? '<span class="thinking-dot">THINKING</span>' : ""}`;
-    ui.opponents.append(element);
+    return el;
+  }
+
+  if (opponents.length === 1) {
+    ui.seatTop.append(seatPlayerEl(opponents[0]));
+  } else if (opponents.length === 2) {
+    ui.seatLeft.append(seatPlayerEl(opponents[0]));
+    ui.seatRight.append(seatPlayerEl(opponents[1]));
+  } else {
+    ui.seatLeft.append(seatPlayerEl(opponents[0]));
+    ui.seatTop.append(seatPlayerEl(opponents[1]));
+    ui.seatRight.append(seatPlayerEl(opponents[2]));
   }
 
   ui.deckCount.textContent = `${state.deckCount} cards`;

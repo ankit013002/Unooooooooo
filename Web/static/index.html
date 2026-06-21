@@ -132,16 +132,25 @@
         </nav>
 
         <div id="paused-banner" class="paused-banner hidden">Game paused while a player reconnects…</div>
-        <div id="opponents" class="opponents"></div>
 
-        <div class="table-center">
-          <button id="draw-pile" class="card-stack" type="button" aria-label="Draw a card">
-            <img src="/assets/cards/Uno%20Back.png" alt="Draw pile" />
-            <span id="deck-count">0 cards</span>
-          </button>
-          <div class="discard-wrap">
-            <div class="pile-label">Discard</div>
-            <img id="discard-card" class="discard-card" src="/assets/cards/Uno%20Back.png" alt="Top discard" />
+        <div class="table-layout">
+          <div id="seat-top" class="seat-area seat-top"></div>
+
+          <div class="table-middle">
+            <div id="seat-left" class="seat-area seat-side"></div>
+
+            <div class="table-center">
+              <button id="draw-pile" class="card-stack" type="button" aria-label="Draw a card">
+                <img src="/assets/cards/Uno%20Back.png" alt="Draw pile" />
+                <span id="deck-count">0 cards</span>
+              </button>
+              <div class="discard-wrap">
+                <div class="pile-label">Discard</div>
+                <img id="discard-card" class="discard-card" src="/assets/cards/Uno%20Back.png" alt="Top discard" />
+              </div>
+            </div>
+
+            <div id="seat-right" class="seat-area seat-side"></div>
           </div>
         </div>
 
