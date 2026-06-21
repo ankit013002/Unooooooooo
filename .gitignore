@@ -1,0 +1,19 @@
+# Local/private assets
+Client/Additional_Assets/Us.jpg
+
+# Python caches and virtual environments
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# PyInstaller and other generated build output
+build/
+dist/
+*.spec.bak
+
+# Editor and OS noise
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
