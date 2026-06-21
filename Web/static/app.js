@@ -345,6 +345,8 @@ function fallbackCopy(value) {
 function leaveRoom() {
   intentionalClose = true;
   clearTimeout(reconnectTimer);
+  ui.winnerModal.classList.add("hidden");
+  ui.colorModal.classList.add("hidden");
   const departingSocket = socket;
   if (departingSocket?.readyState === WebSocket.OPEN) {
     departingSocket.send(JSON.stringify({ action: "leave" }));
