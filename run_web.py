@@ -19,7 +19,7 @@ def local_ip() -> str:
 
 if __name__ == "__main__":
     host = os.getenv("UNO_WEB_HOST", "0.0.0.0")
-    port = int(os.getenv("UNO_WEB_PORT", "8000"))
+    port = int(os.getenv("UNO_WEB_PORT", "5000"))
     print(f"UNO is available on this laptop: http://localhost:{port}")
     print(f"Share this address on the same network: http://{local_ip()}:{port}")
     uvicorn.run("Web.app:app", host=host, port=port, reload=False)
