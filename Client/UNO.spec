@@ -7,8 +7,8 @@ a = Analysis(
     pathex=['.'],
     binaries=[],
     datas=[
-        ('Additional_Assets/*', 'Additional_Assets'),
-        ('Cards/*', 'Cards')
+        ('Additional_Assets/*.png', 'Additional_Assets'),
+        ('Cards/*.png', 'Cards')
     ],
     hiddenimports=[],
     hookspath=[],
@@ -34,7 +34,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon='C:\\Users\\Ankit Patel\\Desktop\\Python_Projects\\UNO\\Client\\Additional_Assets\\UNO_Icon.ico'  # Add this line
+    icon='Additional_Assets/UNO_Icon.ico'
 )
 coll = COLLECT(
     exe,

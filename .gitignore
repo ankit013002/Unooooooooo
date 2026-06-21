@@ -6,6 +6,8 @@ __pycache__/
 *.py[cod]
 .venv/
 venv/
+.env
+.env.*
 
 # PyInstaller and other generated build output
 build/

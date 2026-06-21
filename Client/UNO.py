@@ -6,12 +6,8 @@ import sys
 
 # Utility function to get the absolute path for resources
 def resource_path(relative_path):
-    """ Get the absolute path to the resource, works for dev and PyInstaller """
-    try:
-        # PyInstaller creates a temp folder and stores the path in _MEIPASS
-        base_path = sys._MEIPASS
-    except Exception:
-        base_path = os.path.abspath(".")
+    """Return an asset path for both source and PyInstaller builds."""
+    base_path = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
 
     return os.path.join(base_path, relative_path)
 
@@ -90,8 +86,6 @@ right_arrow_image = pygame.image.load(resource_path(os.path.join('Additional_Ass
 left_arrow_image = pygame.transform.scale(left_arrow_image, (80, 80))  # Resize to fit better
 right_arrow_image = pygame.transform.scale(right_arrow_image, (80, 80))  # Resize to fit better
 
-lobby_image = pygame.image.load(resource_path(os.path.join('Additional_Assets', 'Us.jpg')))
-
 lobby_background_image = pygame.image.load(resource_path(os.path.join('Additional_Assets', 'UNO Refined Lobby.png')))
 
 lobby_background_image = pygame.transform.scale(lobby_background_image, (1920, 1080))
@@ -99,7 +93,7 @@ lobby_background_image = pygame.transform.scale(lobby_background_image, (1920, 1
 game_background_image = pygame.image.load(resource_path(os.path.join('Additional_Assets', 'UNO Refined Game.png')))
 game_background_image = pygame.transform.scale(game_background_image, (1920, 1080))
 
-credits_background_image = pygame.image.load(resource_path(os.path.join('Additional_Assets', 'Us.jpg')))
+credits_background_image = lobby_background_image
 
 uno_button_image = pygame.image.load(resource_path(os.path.join('Additional_Assets', 'UNO Button.png')))
 uno_button_image = pygame.transform.scale(uno_button_image, (300, 100))  # Make the button larger
