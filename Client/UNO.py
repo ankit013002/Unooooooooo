@@ -126,142 +126,74 @@ show_credits = False
 scroll_offset = 0  # Initialize scroll offset
 max_scroll_offset = 0  # Maximum scroll offset
 
-# def listen_to_server():
-#     global connected_players, game_started, player_id, player_hand, discard_pile, your_turn, choose_color, opponent_hands, winner
-#     try:
-#         while True:
-#             data = client_socket.recv(1024).decode().strip()
-#             if not data:
-#                 continue
-#             if "YOUR TURN" in data:
-#                 your_turn = True
-#                 data = data.replace("YOUR TURN", "")
-#             if data.startswith("CONNECTED"):
-#                 connected_players = int(data.split()[1])
-#             elif data.startswith("ASSIGN_ID"):
-#                 player_id = int(data.split()[1])
-#                 print(f"Assigned Player ID: {player_id}")
-#             elif data.strip() == "START":
-#                 game_started = True
-#                 print("Game is starting! game_started set to True")
-#             elif data.startswith("STATE"):
-#                 if player_id is not None:
-#                     parts = data.split(" ")
-#                     if "Wild" in parts[1] or "Draw 4" in parts[1]:
-#                         discard_pile = parts[1]
-#                         offset = 2
-#                     else:
-#                         discard_pile = parts[1] + " " + parts[2]
-#                         offset = 3
-#                     hands = " ".join(parts[offset:]).split(";")
-#                     player_hand = hands[player_id].split(",")
-#                     player_hand = [card.strip() for card in player_hand if card.strip()]
-#                     opponent_hands = [hands[i].split(",") for i in range(len(hands)) if i != player_id]
-#                     for i in range(len(opponent_hands)):
-#                         opponent_hands[i] = [card.strip() for card in opponent_hands[i] if card.strip()]
-#             elif data.startswith("DRAW2"):
-#                 parts = data.split()  # Split the string into a list of substrings
-#                 if len(parts) >= 5:  # Ensure there are enough elements
-#                     piece1 = " ".join(parts[1:3])  # Join the second and third elements
-#                     player_hand.append(piece1)  # Add the joined string to the player's hand
-#                     piece2 = " ".join(parts[3:5])  # Join the fourth and fifth elements
-#                     player_hand.append(piece2)  # Add the joined string to the player's hand
+def handle_server_message(data):
+    global connected_players, game_started, player_id, player_hand, discard_pile
+    global your_turn, choose_color, opponent_hands, winner, ready
 
-#             elif data.startswith("DRAW4"):
-#                 parts = data.split()  # Split the string into a list of substrings
-#                 if len(parts) >= 9:  # Ensure there are enough elements
-#                     piece1 = " ".join(parts[1:3])  # Join the second and third elements
-#                     player_hand.append(piece1)  # Add the joined string to the player's hand
-#                     piece2 = " ".join (parts[3:5])  # Join the fourth and fifth elements
-#                     player_hand.append(piece2)  # Add the joined string to the player's hand
-#                     piece3 = " ".join(parts[5:7])  # Join the sixth and seventh elements
-#                     player_hand.append(piece3)  # Add the joined string to the player's hand
-#                     piece4 = " ".join(parts[7:9])  # Join the eighth and ninth elements
-#                     player_hand.append(piece4)  # Add the joined string to the player's hand
-                
-#             elif data.startswith("DRAW"):
-#                 card = " ".join(data.split()[1:])
-#                 player_hand.append(card)
-#                 your_turn = True
-#             elif data.strip() == "INVALID PLAY":
-#                 your_turn = True
-#             elif data.strip().startswith("CHOOSE_COLOR"):
-#                 choose_color = True
-#             elif data.startswith("WINNER"):
-#                 winner = data.split()[1]
-#                 game_started = False
-#                 draw_win_screen(winner)
-#                 break  # Exit the listen loop to prevent returning to the lobby
-#     except Exception as e:
-#         print(f"Error in listen_to_server: {e}")
+    if data.startswith("CONNECTED"):
+        connected_players = int(data.split()[1])
+    elif data.startswith("ASSIGN_ID"):
+        player_id = int(data.split()[1])
+        print(f"Assigned Player ID: {player_id}")
+    elif data == "START":
+        game_started = True
+        winner = None
+        print("Game is starting!")
+    elif data == "RESET":
+        game_started = False
+        ready = False
+        your_turn = False
+        choose_color = False
+        player_hand = []
+        opponent_hands = [[] for _ in range(4)]
+    elif data == "YOUR TURN":
+        your_turn = True
+    elif data == "CHOOSE_COLOR":
+        choose_color = True
+    elif data == "INVALID PLAY":
+        your_turn = True
+    elif data.startswith("ERROR"):
+        print(f"Server: {data[6:]}")
+    elif data == "SERVER_FULL":
+        print("The server already has all of its human players.")
+    elif data.startswith("STATE") and player_id is not None:
+        parts = data.split(" ")
+        if parts[1] in ("Wild", "Draw"):
+            discard_pile = parts[1] if parts[1] == "Wild" else "Draw 4"
+            offset = 2 if parts[1] == "Wild" else 3
+        else:
+            discard_pile = parts[1] + " " + parts[2]
+            offset = 3
+        hands = " ".join(parts[offset:]).split(";")
+        parsed_hands = [
+            [card.strip() for card in hand.split(",") if card.strip()]
+            for hand in hands
+        ]
+        player_hand = parsed_hands[player_id]
+        opponent_hands = [
+            hand for index, hand in enumerate(parsed_hands) if index != player_id
+        ]
+    elif data.startswith("WINNER"):
+        winner = data.split()[1]
+        game_started = False
+        your_turn = False
+        ready = False
+
 
 def listen_to_server():
-    global connected_players, game_started, player_id, player_hand, discard_pile, your_turn, choose_color, opponent_hands, winner, ready
+    buffer = ""
     try:
         while True:
-            data = client_socket.recv(1024).decode().strip()
-            if not data:
-                continue
-            if "YOUR TURN" in data:
-                your_turn = True
-                data = data.replace("YOUR TURN", "")
-            if data.startswith("CONNECTED"):
-                connected_players = int(data.split()[1])
-            elif data.startswith("ASSIGN_ID"):
-                player_id = int(data.split()[1])
-                print(f"Assigned Player ID: {player_id}")
-            elif data.strip() == "START":
-                game_started = True
-                print("Game is starting! game_started set to True")
-            elif data.startswith("STATE"):
-                if player_id is not None:
-                    parts = data.split(" ")
-                    if "Wild" in parts[1] or "Draw 4" in parts[1]:
-                        discard_pile = parts[1]
-                        offset = 2
-                    else:
-                        discard_pile = parts[1] + " " + parts[2]
-                        offset = 3
-                    hands = " ".join(parts[offset:]).split(";")
-                    player_hand = hands[player_id].split(",")
-                    player_hand = [card.strip() for card in player_hand if card.strip()]
-                    opponent_hands = [hands[i].split(",") for i in range(len(hands)) if i != player_id]
-                    for i in range(len(opponent_hands)):
-                        opponent_hands[i] = [card.strip() for card in opponent_hands[i] if card.strip()]
-            elif data.startswith("DRAW2"):
-                parts = data.split()
-                if len(parts) >= 5:
-                    piece1 = " ".join(parts[1:3])
-                    player_hand.append(piece1)
-                    piece2 = " ".join(parts[3:5])
-                    player_hand.append(piece2)
-            elif data.startswith("DRAW4"):
-                parts = data.split()
-                if len(parts) >= 9:
-                    piece1 = " ".join(parts[1:3])
-                    player_hand.append(piece1)
-                    piece2 = " ".join(parts[3:5])
-                    player_hand.append(piece2)
-                    piece3 = " ".join(parts[5:7])
-                    player_hand.append(piece3)
-                    piece4 = " ".join(parts[7:9])
-                    player_hand.append(piece4)
-            elif data.startswith("DRAW"):
-                card = " ".join(data.split()[1:])
-                player_hand.append(card)
-                your_turn = True
-            elif data.strip() == "INVALID PLAY":
-                your_turn = True
-            elif data.strip().startswith("CHOOSE_COLOR"):
-                choose_color = True
-            elif data.startswith("WINNER"):
-                winner = data.split()[1]
-                game_started = False
-                draw_win_screen(winner)
-                ready = False  # Reset readiness
-            # Remove the break statement here so the loop continues
-    except Exception as e:
-        print(f"Error in listen_to_server: {e}")
+            chunk = client_socket.recv(4096)
+            if not chunk:
+                break
+            buffer += chunk.decode("utf-8")
+            while "\n" in buffer:
+                message, buffer = buffer.split("\n", 1)
+                if message.strip():
+                    handle_server_message(message.strip())
+    except (ConnectionError, UnicodeDecodeError, OSError) as error:
+        print(f"Connection to server ended: {error}")
 
 def draw_lobby():
     screen.blit(lobby_background_image, (0, 0))
@@ -491,7 +423,7 @@ try:
                 elif not game_started:
                     if 1700 <= x <= 1900 and 950 <= y <= 1000:
                         if not ready:
-                            client_socket.sendall("READY".encode())
+                            client_socket.sendall(b"READY\n")
                             ready = True
                     elif 50 <= x <= 250 and 950 <= y <= 1000:
                         show_credits = True
@@ -499,7 +431,7 @@ try:
                     if 800 <= x <= 1200 and 150 <= y <= 200:
                         color_index = (x - 800) // 100
                         chosen_color = ["Red", "Yellow", "Green", "Blue"][color_index]
-                        client_socket.sendall(f"CHOOSE_COLOR {chosen_color}".encode())
+                        client_socket.sendall(f"CHOOSE_COLOR {chosen_color}\n".encode())
                         choose_color = False
                         your_turn = False
                 elif left_arrow_rect.collidepoint(x, y):
@@ -513,11 +445,11 @@ try:
                 elif uno_button_rect.collidepoint(x, y) and len(player_hand) == 2:
                     print("UNO button clicked")
                     uno_pressed = True
-                    client_socket.sendall("UNO".encode())
+                    client_socket.sendall(b"UNO\n")
                 elif your_turn:
                     for i, card in enumerate(player_hand):
                         if 100 + (i - scroll_offset) * 100 <= x <= 200 + (i - scroll_offset) * 100 and 850 <= y <= 950:  # Adjusted y-coordinate
-                            client_socket.sendall(f"PLAY {card}".encode())
+                            client_socket.sendall(f"PLAY {card}\n".encode())
                             if "Draw 4" in card or "Wild" in card:
                                 choose_color = True
                             your_turn = False
@@ -525,7 +457,7 @@ try:
                     # Check if the user clicked on the draw card stack
                     if discard_pile_x - CARD_IMAGES["Uno Back"].get_width() - 20 <= x <= discard_pile_x - 20 and discard_pile_y <= y <= discard_pile_y + CARD_IMAGES["Uno Back"].get_height():
                         print("User clicked on the draw card stack.")
-                        client_socket.sendall("DRAW".encode())
+                        client_socket.sendall(b"DRAW\n")
                         your_turn = False
                 
         if show_credits:

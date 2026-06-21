@@ -1,269 +1,266 @@
+"""TCP server for human and Llama-powered UNO players."""
+
+from __future__ import annotations
+
+import logging
+import os
 import socket
 import threading
-import random
+import time
 
-# Server settings
-HOST = '127.0.0.1'
-PORT = 65432
+try:
+    from .bots import LlamaBot
+    from .game import COLORS, UnoGame
+except ImportError:  # Support `python Server/Server.py`.
+    from bots import LlamaBot
+    from game import COLORS, UnoGame
 
-# Global variables
-clients = []
-player_ready = [False] * 4  # To track which players are ready
-server_socket = None
 
-# UNO game variables
-colors = ["Red", "Yellow", "Green", "Blue"]
-values = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "Skip", "Reverse", "Draw"]
-# Create a larger deck by multiplying the initial deck by 3
-deck = ([f"{color} {value}" for color in colors for value in values] * 1)  # Each card appears three times
-deck += ["Draw 4"] * 1  # Add the Draw 4 cards to the deck
-deck += ["Wild"] * 1  # Add the Wild cards to the deck
-discard_pile = []
-player_hands = [[] for _ in range(4)]
-current_turn = 0
-direction = 1  # 1 for clockwise, -1 for counterclockwise
+logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"), format="%(asctime)s %(levelname)s %(message)s")
+LOGGER = logging.getLogger("uno.server")
 
-# Add UNO penalty tracking
-uno_called = [False] * 4
+HOST = os.getenv("UNO_HOST", "127.0.0.1")
+PORT = int(os.getenv("UNO_PORT", "65432"))
+HUMAN_PLAYERS = int(os.getenv("UNO_HUMANS", "2"))
+BOT_PLAYERS = int(os.getenv("UNO_BOTS", "2"))
+BOT_DELAY = float(os.getenv("UNO_BOT_DELAY", "0.8"))
+PLAYER_COUNT = HUMAN_PLAYERS + BOT_PLAYERS
 
-def handle_client(conn, addr, player_id):
-    global player_ready
-    print(f"Player {player_id + 1} connected from {addr}")
-    conn.sendall(f"ASSIGN_ID {player_id}\n".encode())  # Send the assigned player ID to the client
-    try:
-        while True:
-            print(f"Waiting for data from player {player_id + 1}...")
-            data = conn.recv(1024).decode()
-            print(f"Received data from player {player_id + 1}: {data}")
-            if not data:
-                break
-            if data == "READY":
-                player_ready[player_id] = True
-                print(f"Player {player_id + 1} is ready.")
-                if all(player_ready[:len(clients)]):
-                    start_game()
-            elif data == "UNO":
-                uno_called[player_id] = True
-                print(f"Player {player_id + 1} called UNO.")
+if not 2 <= PLAYER_COUNT <= 4:
+    raise ValueError("UNO_HUMANS + UNO_BOTS must be between 2 and 4")
+if HUMAN_PLAYERS < 1:
+    raise ValueError("At least one human player is required")
+
+
+class UnoServer:
+    def __init__(self) -> None:
+        self.game = UnoGame(PLAYER_COUNT)
+        self.clients: dict[int, socket.socket] = {}
+        self.ready_players: set[int] = set()
+        self.bots = {
+            player_id: LlamaBot()
+            for player_id in range(HUMAN_PLAYERS, PLAYER_COUNT)
+        }
+        self.lock = threading.RLock()
+        self.send_lock = threading.Lock()
+        self.server_socket: socket.socket | None = None
+        self.bot_worker_active = False
+        self.generation = 0
+
+    def serve_forever(self) -> None:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_socket:
+            self.server_socket = server_socket
+            server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            server_socket.bind((HOST, PORT))
+            server_socket.listen()
+            LOGGER.info(
+                "UNO server listening on %s:%s (%s human seats, %s Llama seats)",
+                HOST,
+                PORT,
+                HUMAN_PLAYERS,
+                BOT_PLAYERS,
+            )
+            for player_id, bot in self.bots.items():
+                LOGGER.info("Player %s: %s", player_id + 1, bot.name)
+
+            try:
+                while True:
+                    connection, address = server_socket.accept()
+                    self._accept_human(connection, address)
+            except KeyboardInterrupt:
+                LOGGER.info("Shutting down server")
+            finally:
+                with self.lock:
+                    for connection in self.clients.values():
+                        connection.close()
+
+    def _accept_human(self, connection: socket.socket, address: tuple[str, int]) -> None:
+        with self.lock:
+            available = next(
+                (player_id for player_id in range(HUMAN_PLAYERS) if player_id not in self.clients),
+                None,
+            )
+            if available is None:
+                connection.sendall(b"SERVER_FULL\n")
+                connection.close()
+                return
+            self.clients[available] = connection
+            LOGGER.info("Human player %s connected from %s:%s", available + 1, *address)
+            self._send(available, f"ASSIGN_ID {available}\n")
+            self._broadcast_connected()
+
+        threading.Thread(
+            target=self._handle_human,
+            args=(available, connection),
+            daemon=True,
+            name=f"human-{available + 1}",
+        ).start()
+
+    def _handle_human(self, player_id: int, connection: socket.socket) -> None:
+        buffer = ""
+        try:
+            while True:
+                chunk = connection.recv(4096)
+                if not chunk:
+                    break
+                buffer += chunk.decode("utf-8")
+                while "\n" in buffer:
+                    message, buffer = buffer.split("\n", 1)
+                    if message.strip():
+                        self._handle_message(player_id, message.strip())
+        except (ConnectionError, UnicodeDecodeError, OSError) as error:
+            LOGGER.info("Player %s connection ended: %s", player_id + 1, error)
+        finally:
+            self._disconnect_human(player_id, connection)
+
+    def _handle_message(self, player_id: int, message: str) -> None:
+        with self.lock:
+            if message == "READY":
+                self.ready_players.add(player_id)
+                LOGGER.info("Human player %s is ready", player_id + 1)
+                self._start_if_ready()
+                return
+            if message == "UNO":
+                result = self.game.call_uno(player_id)
+                if not result.valid:
+                    self._send(player_id, f"ERROR {result.message}\n")
+                return
+            if message == "DRAW":
+                result = self.game.draw(player_id)
+            elif message.startswith("PLAY "):
+                result = self.game.play_card(player_id, message[5:].strip())
+            elif message.startswith("CHOOSE_COLOR "):
+                result = self.game.choose_color(player_id, message.split(maxsplit=1)[1].title())
             else:
-                handle_game_action(player_id, data)
-    except Exception as e:
-        print(f"Error in handle_client: {e}")
-    finally:
-        conn.close()
-        print(f"Player {player_id + 1} disconnected.")
-        player_ready[player_id] = False
-        clients.remove(conn)
-        notify_clients()
+                self._send(player_id, "ERROR Unknown command\n")
+                return
 
-def check_win_condition():
-    for i, hand in enumerate(player_hands):
-        if len(hand) == 0:
-            for conn in clients:
-                conn.sendall(f"WINNER {i + 1}\n".encode())
-            reset_game()  # Reset the game state after announcing the winner
-            return True
-    return False
+            if not result.valid:
+                self._send(player_id, f"INVALID PLAY\nERROR {result.message}\n")
+                return
+            self._after_action(player_id, result)
 
-def reset_game():
-    global deck, discard_pile, player_hands, current_turn, direction, uno_called, player_ready
-    deck = ([f"{color} {value}" for color in colors for value in values] * 1)  # Reset the deck
-    deck += ["Draw 4"] * 1  # Add the Draw 4 cards to the deck
-    deck += ["Wild"] * 1  # Add the Wild cards to the deck
-    random.shuffle(deck)
-    discard_pile = []
-    player_hands = [[] for _ in range(4)]
-    current_turn = 0
-    direction = 1  # Reset direction to clockwise
-    uno_called = [False] * 4
-    player_ready = [False] * 4  # Reset player readiness
-    notify_clients()  # Notify clients to reset their state
-
-def handle_game_action(player_id, action):
-    global current_turn, direction, deck
-    if action.startswith("PLAY"):
-        parts = action.split(maxsplit=1)
-        if len(parts) < 2:
-            send_message_to_player(player_id, "INVALID PLAY\n")
+    def _start_if_ready(self) -> None:
+        human_ids = set(range(HUMAN_PLAYERS))
+        if self.game.started or set(self.clients) != human_ids or not human_ids <= self.ready_players:
             return
-        card = parts[1].strip()
-        print(f"Player {player_id + 1} played: {card}")
-        if "Wild" in card or "Draw 4" in card:
-            print(f"Player {player_id + 1} played a special card: {card}")
-            if is_valid_play(player_hands[player_id], card):
-                player_hands[player_id].remove(card)
-                discard_pile.append(card)
-                uno_called[player_id] = False  # Reset UNO call status
-                send_message_to_player(player_id, "CHOOSE_COLOR\n")
-                if "Draw 4" in card:
-                    next_player_id = (current_turn + direction) % len(clients)
-                    draw_four(next_player_id)
-                    current_turn = (current_turn + direction) % len(clients)
-                current_turn = (current_turn + direction) % len(clients)
-                return  # Wait for color choice before notifying the next player
-            else:
-                send_message_to_player(player_id, "INVALID PLAY\n")
-        else:
-            if is_valid_play(player_hands[player_id], card):
-                player_hands[player_id].remove(card)
-                discard_pile.append(card)
-                if check_win_condition():
-                    return
-                if "Reverse" in card:
-                    direction *= -1
-                    current_turn = (current_turn + direction) % len(clients)
-                elif "Skip" in card:
-                    current_turn = (current_turn + direction) % len(clients)
-                    current_turn = (current_turn + direction) % len(clients)
-                elif "Draw" in card:
-                    next_player_id = (current_turn + direction) % len(clients)
-                    draw_two(next_player_id)
-                    current_turn = (current_turn + direction) % len(clients)
-                    current_turn = (current_turn + direction) % len(clients)
-                else:
-                    current_turn = (current_turn + direction) % len(clients)
-                
-                # Check for UNO call
-                if len(player_hands[player_id]) == 1 and not uno_called[player_id]:
-                    draw_two(player_id)  # Penalize player for not calling UNO
-                    send_message_to_player(player_id, "Penalty for not calling UNO\n")
-                
-                broadcast_game_state()
-                notify_next_player()
-            else:
-                send_message_to_player(player_id, "INVALID PLAY\n")
-    elif action == "DRAW":
-        print(f"Player {player_id + 1} drew a card.")
-        draw_card(player_id)
-        notify_next_player()  # Notify the next player after drawing a card
-    elif action.startswith("CHOOSE_COLOR"):
-        parts = action.split()
-        if len(parts) < 2:
-            send_message_to_player(player_id, "INVALID COLOR CHOICE\n")
+        self.generation += 1
+        self.game.start()
+        LOGGER.info("Starting a %s-player game", PLAYER_COUNT)
+        self._broadcast("START\n")
+        self._broadcast_state()
+        self._notify_turn()
+
+    def _after_action(self, player_id: int, result) -> None:
+        self._broadcast_state()
+        if result.winner is not None:
+            LOGGER.info("Player %s wins", result.winner + 1)
+            self._broadcast(f"WINNER {result.winner + 1}\n")
+            self.ready_players.clear()
             return
-        new_color = parts[1]
-        if not discard_pile:
-            send_message_to_player(player_id, "INVALID COLOR CHOICE\n")
+        if result.needs_color:
+            self._send(player_id, "CHOOSE_COLOR\n")
             return
-        top_card = discard_pile.pop()
-        if "Wild" in top_card:
-            new_card = f"{new_color} Wild"
-        elif "Draw 4" in top_card:
-            new_card = f"{new_color} Plus"
+        self._notify_turn()
+
+    def _notify_turn(self) -> None:
+        if not self.game.started:
+            return
+        player_id = self.game.current_turn
+        if player_id in self.bots:
+            self._start_bot_worker()
         else:
-            new_card = f"{new_color} {top_card.split()[1]}"
-        discard_pile.append(new_card)
-        broadcast_game_state()
-        notify_next_player()
-    if(len(deck) < 10):
-        print("Adjusting Deck")
-        deck = ([f"{color} {value}" for color in colors for value in values] * 1)  # Each card appears three times
-        deck += ["Draw 4"] * 1  # Add the Draw 4 cards to the deck
-        deck += ["Wild"] * 1  # Add the Wild cards to the deck
-        random.shuffle(deck)
-    print(f"Current turn: {current_turn}")
-    print("\n--------------------------------------------\n")
+            self._send(player_id, "YOUR TURN\n")
 
-def draw_two(player_id):
-    card = deck.pop()
-    player_hands[player_id].append(card)
-    card_two = deck.pop()
-    player_hands[player_id].append(card_two)
-    send_message_to_player(player_id, f"DRAW2 {card}; {card_two}\n")
-    
-    broadcast_game_state()
+    def _start_bot_worker(self) -> None:
+        if self.bot_worker_active:
+            return
+        self.bot_worker_active = True
+        threading.Thread(target=self._run_bot_turns, daemon=True, name="llama-players").start()
 
-def draw_four(player_id):
-    card = deck.pop()
-    player_hands[player_id].append(card)
-    card_two = deck.pop()
-    player_hands[player_id].append(card_two)
-    card_three = deck.pop()
-    player_hands[player_id].append(card_three)
-    card_four = deck.pop()
-    player_hands[player_id].append(card_four)
-    send_message_to_player(player_id, f"DRAW4 {card} {card_two} {card_three} {card_four}\n")
-    
-    broadcast_game_state()
+    def _run_bot_turns(self) -> None:
+        try:
+            while True:
+                with self.lock:
+                    if not self.game.started or self.game.current_turn not in self.bots:
+                        return
+                    player_id = self.game.current_turn
+                    generation = self.generation
+                    hand = list(self.game.hands[player_id])
+                    view = {
+                        "hand": hand,
+                        "legal_cards": self.game.legal_cards(player_id),
+                        "top_card": self.game.top_card,
+                        "hand_counts": [len(cards) for cards in self.game.hands],
+                        "direction": "clockwise" if self.game.direction == 1 else "counterclockwise",
+                    }
+                    bot = self.bots[player_id]
 
-def is_valid_play(player_hand, card):
-    if "Wild" in card or "Draw 4" in card:
-        return True  # Always a valid play for Wild and Draw 4
-    last_discard = discard_pile[-1]  # Get the last card in the discard pile
-    discard_color, discard_value = last_discard.split(maxsplit=1)  # Split the color and value
-    card_color, card_value = card.split(maxsplit=1)  # Split the color and value of the card being played
-    return discard_color == card_color or discard_value == card_value  # Check if the color or value matches
+                time.sleep(BOT_DELAY)
+                decision = bot.decide(view)
 
-def draw_card(player_id):
-    if deck:
-        card = deck.pop()
-        player_hands[player_id].append(card)
-        send_message_to_player(player_id, f"DRAW {card}\n")
-        broadcast_game_state()
+                with self.lock:
+                    if generation != self.generation or not self.game.started or self.game.current_turn != player_id:
+                        continue
+                    if decision.action == "play" and decision.card:
+                        if len(self.game.hands[player_id]) == 2:
+                            self.game.call_uno(player_id)
+                        result = self.game.play_card(player_id, decision.card)
+                        if result.valid and result.needs_color:
+                            color = decision.color if decision.color in COLORS else COLORS[0]
+                            result = self.game.choose_color(player_id, color)
+                        LOGGER.info("Llama player %s played %s", player_id + 1, decision.card)
+                    else:
+                        result = self.game.draw(player_id)
+                        LOGGER.info("Llama player %s drew a card", player_id + 1)
+                    self._after_action(player_id, result)
+        finally:
+            with self.lock:
+                self.bot_worker_active = False
+                # A human action may have moved to a bot just as the worker exited.
+                if self.game.started and self.game.current_turn in self.bots:
+                    self._start_bot_worker()
 
+    def _disconnect_human(self, player_id: int, connection: socket.socket) -> None:
+        with self.lock:
+            if self.clients.get(player_id) is not connection:
+                return
+            self.clients.pop(player_id, None)
+            self.ready_players.discard(player_id)
+            connection.close()
+            self.generation += 1
+            self.game.started = False
+            self.game.pending_color_player = None
+            LOGGER.info("Human player %s disconnected; returning to lobby", player_id + 1)
+            self._broadcast("RESET\n")
+            self._broadcast_connected()
 
-def start_game():
-    print("All players ready. Starting the game...")
-    random.shuffle(deck)
-    for i in range(7):  # Deal 7 cards to each player
-        for player_hand in player_hands:
-            player_hand.append(deck.pop())
-    not_wild_or_draw = False
-    card = None
-    while(not not_wild_or_draw):
-        card = deck.pop()
-        if "Wild" not in card and "Draw 4" not in card:
-            not_wild_or_draw = True
-        else:
-            print(f"Card {card} is a Wild or Draw 4 card. Reshuffling...")
-            deck.insert(25, card) # Put the card back in the deck
-            random.shuffle(deck)
-    discard_pile.append(card)  # Start the discard pile with one card
-    broadcast_game_state()
-    for conn in clients:
-        conn.sendall("START\n".encode())  # Send the START message to all clients
-    notify_next_player()
+    def _broadcast_connected(self) -> None:
+        occupied_seats = len(self.clients) + BOT_PLAYERS
+        self._broadcast(f"CONNECTED {occupied_seats}\n")
 
-def notify_next_player():
-    next_player_id = current_turn
-    print(f"Notifying player {next_player_id + 1} that it's their turn.")
-    send_message_to_player(next_player_id, "YOUR TURN\n")
+    def _broadcast_state(self) -> None:
+        if not self.game.top_card:
+            return
+        for viewer_id in list(self.clients):
+            hands = self.game.public_hands_for(viewer_id)
+            serialized_hands = " ; ".join(",".join(hand) for hand in hands)
+            self._send(viewer_id, f"STATE {self.game.top_card} {serialized_hands}\n")
 
-def send_message_to_player(player_id, message):
-    clients[player_id].sendall(message.encode())
+    def _broadcast(self, message: str) -> None:
+        for player_id in list(self.clients):
+            self._send(player_id, message)
 
-def broadcast_game_state():
-    game_state = f"STATE {discard_pile[-1]} " + " ; ".join([",".join(hand) for hand in player_hands])
-    for conn in clients:
-        conn.sendall(f"{game_state}\n".encode())
+    def _send(self, player_id: int, message: str) -> None:
+        connection = self.clients.get(player_id)
+        if connection is None:
+            return
+        try:
+            with self.send_lock:
+                connection.sendall(message.encode("utf-8"))
+        except OSError:
+            pass
 
-def notify_clients():
-    connected_str = f"CONNECTED {len(clients)}\n"
-    for conn in clients:
-        conn.sendall(connected_str.encode())
-
-def accept_connections():
-    global server_socket
-    server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server_socket.bind((HOST, PORT))
-    server_socket.listen()
-    print(f"Server listening on {HOST}:{PORT}")
-    player_id = 0
-
-    try:
-        while player_id < 4:
-            conn, addr = server_socket.accept()
-            clients.append(conn)
-            threading.Thread(target=handle_client, args=(conn, addr, player_id)).start()
-            player_id += 1
-            notify_clients()
-    except KeyboardInterrupt:
-        print("Shutting down server...")
-    finally:
-        for conn in clients:
-            conn.close()
-        server_socket.close()
-        print("Server closed.")
 
 if __name__ == "__main__":
-    accept_connections()
+    UnoServer().serve_forever()
