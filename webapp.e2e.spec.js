@@ -30,8 +30,23 @@ test("two humans can create, join, and start a game", async ({ browser }) => {
   await expect(first.locator("#opponents .opponent")).toHaveCount(3);
   await expect(first.locator("#discard-card")).toHaveAttribute("src", /assets\/cards/);
 
+  await second.reload();
+  await expect(second.locator("#game-view")).toBeVisible();
+  await expect(second.locator("#player-hand .hand-card")).toHaveCount(7);
+  await expect(first.locator("#paused-banner")).toBeHidden();
+
   await first.screenshot({ path: "web-game-desktop.png", fullPage: true });
   await second.screenshot({ path: "web-game-mobile.png", fullPage: true });
+
+  await first.locator("#game-view [data-leave]").click();
+  await expect(first.locator("#home-view")).toBeVisible();
+  await first.locator("#join-name").fill("Replacement");
+  await first.locator("#room-code").fill(code);
+  await first.getByRole("button", { name: /join game/i }).click();
+  await expect(first.locator("#lobby-view")).toBeVisible();
+  await expect(first.locator("#connection-label")).toHaveText("Connected");
+  await expect(first.locator("#lobby-players")).toContainText("Kisu");
+  await expect(first.locator("#lobby-players")).toContainText("Replacement");
   expect(errors).toEqual([]);
 
   await firstContext.close();

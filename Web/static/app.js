@@ -320,7 +320,13 @@ function fallbackCopy(value) {
 function leaveRoom() {
   intentionalClose = true;
   clearTimeout(reconnectTimer);
-  if (socket) socket.close();
+  const departingSocket = socket;
+  if (departingSocket?.readyState === WebSocket.OPEN) {
+    departingSocket.send(JSON.stringify({ action: "leave" }));
+    setTimeout(() => departingSocket.close(), 80);
+  } else if (departingSocket) {
+    departingSocket.close();
+  }
   socket = null;
   state = null;
   history.replaceState(null, "", location.pathname);

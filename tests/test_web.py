@@ -71,6 +71,53 @@ class RoomBotFlowTests(unittest.IsolatedAsyncioTestCase):
         self.assertGreater(len(websocket.messages), 5)
         self.assertTrue(all("hand" in message for message in websocket.messages if message["type"] == "state"))
 
+    async def test_disconnect_reconnects_to_same_private_hand(self):
+        room = GameRoom("BACK", human_seats=1, bot_seats=1)
+        first_socket = FakeWebSocket()
+        player = await room.connect(first_socket, "Ankit", None)
+        await room.handle_action(player.player_id, {"action": "ready"})
+        original_hand = list(room.game.hands[player.player_id])
+        await room.disconnect(player.player_id, first_socket)
+
+        second_socket = FakeWebSocket()
+        reconnected = await room.connect(second_socket, "Ankit", player.token)
+        self.assertEqual(reconnected.player_id, player.player_id)
+        self.assertEqual(room.game.hands[player.player_id], original_hand)
+        self.assertFalse(room.state_for(player.player_id)["paused"])
+
+    async def test_intentional_leave_releases_seat_and_resets_game(self):
+        room = GameRoom("LEAV", human_seats=2, bot_seats=0)
+        first_socket = FakeWebSocket()
+        second_socket = FakeWebSocket()
+        first = await room.connect(first_socket, "Ankit", None)
+        second = await room.connect(second_socket, "Kisu", None)
+        await room.handle_action(first.player_id, {"action": "ready"})
+        await room.handle_action(second.player_id, {"action": "ready"})
+        self.assertTrue(room.game.started)
+
+        await room.leave(first.player_id, first_socket)
+        self.assertFalse(room.game.started)
+        replacement = await room.connect(FakeWebSocket(), "Friend", None)
+        self.assertEqual(replacement.player_id, first.player_id)
+
+    async def test_finished_room_can_start_a_rematch(self):
+        room = GameRoom("MORE", human_seats=2, bot_seats=0)
+        first = await room.connect(FakeWebSocket(), "Ankit", None)
+        second = await room.connect(FakeWebSocket(), "Kisu", None)
+        await room.handle_action(first.player_id, {"action": "ready"})
+        await room.handle_action(second.player_id, {"action": "ready"})
+        room.game.hands[first.player_id] = ["Red 1"]
+        room.game.discard_pile = ["Red 5"]
+        room.game.current_turn = first.player_id
+        await room.handle_action(first.player_id, {"action": "play", "card": "Red 1"})
+        self.assertEqual(room.game.winner, first.player_id)
+
+        await room.handle_action(first.player_id, {"action": "rematch"})
+        await room.handle_action(second.player_id, {"action": "rematch"})
+        self.assertTrue(room.game.started)
+        self.assertIsNone(room.game.winner)
+        self.assertEqual([len(hand) for hand in room.game.hands], [7, 7])
+
 
 if __name__ == "__main__":
     unittest.main()

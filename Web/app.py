@@ -79,6 +79,10 @@ async def game_socket(websocket: WebSocket, code: str, name: str = "Player", tok
     try:
         while True:
             payload = await websocket.receive_json()
+            if payload.get("action") == "leave":
+                await room.leave(player.player_id, websocket)
+                await websocket.close(code=1000, reason="Left room")
+                return
             try:
                 await room.handle_action(player.player_id, payload)
             except RoomError as error:

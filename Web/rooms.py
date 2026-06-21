@@ -93,6 +93,23 @@ class GameRoom:
             self.generation += 1
             await self._broadcast_state_locked()
 
+    async def leave(self, player_id: int, websocket: WebSocket) -> None:
+        """Release a human seat after an explicit leave, unlike a reconnectable drop."""
+        async with self.lock:
+            player = self.players.get(player_id)
+            if not player or player.bot or player.websocket is not websocket:
+                return
+            self.players.pop(player_id)
+            self.generation += 1
+            self.bot_thinking = None
+            if self.bot_task and not self.bot_task.done():
+                self.bot_task.cancel()
+            if self.game.started or self.game.winner is not None:
+                self.game = UnoGame(self.player_count)
+                for remaining in self.players.values():
+                    remaining.ready = remaining.bot
+            await self._broadcast_state_locked()
+
     async def handle_action(self, player_id: int, payload: dict[str, Any]) -> None:
         async with self.lock:
             player = self.players.get(player_id)
