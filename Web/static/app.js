@@ -22,6 +22,7 @@ const ui = {
   seatTop: $("#seat-top"),
   seatLeft: $("#seat-left"),
   seatRight: $("#seat-right"),
+  handZone: $("#hand-zone"),
   turnBanner: $("#turn-banner"),
   pausedBanner: $("#paused-banner"),
   gameRoomCode: $("#game-room-code"),
@@ -203,6 +204,7 @@ function renderLobby() {
 
   ui.readyButton.disabled = state.ready || state.connectedHumans < state.humanSeats;
   ui.readyButton.textContent = state.ready ? "Ready ✓" : "I’m ready";
+  ui.readyButton.classList.toggle("ready-confirmed", state.ready);
   ui.readyHint.textContent = state.connectedHumans < state.humanSeats
     ? `Waiting for ${state.humanSeats - state.connectedHumans} more human player${state.humanSeats - state.connectedHumans === 1 ? "" : "s"}.`
     : "The game begins when every human is ready.";
@@ -234,6 +236,7 @@ function renderGame() {
         ? "Your turn"
         : `${current?.name || "Player"}’s turn`;
   ui.turnBanner.classList.toggle("yours", myTurn);
+  ui.handZone.classList.toggle("your-turn", myTurn);
   ui.pausedBanner.classList.toggle("hidden", !state.paused);
   ui.gameRoomCode.textContent = `ROOM ${state.roomCode}`;
 
